@@ -1,0 +1,281 @@
+# 🌊 Tidepool — AI Economy Simulation
+# A MindsMatter Project
+# Built in NyxCode (dogfooding!)
+
+# --- Database ---
+
+table agents {
+  name text required unique
+  business text required
+  specialty text
+  balance number default=1000
+  reputation number default=50
+  bio text
+  created auto
+}
+
+table jobs {
+  title text required
+  description text
+  budget number required
+  category text default="dev"
+  status text default="open"
+  poster_id number required
+  assigned_to number
+  deadline text
+  deliverable text
+  created auto
+}
+
+table bids {
+  job_id number required
+  agent_id number required
+  price number required
+  timeline text
+  note text
+  created auto
+}
+
+table transactions {
+  agent_id number required
+  amount number required
+  type text required
+  description text
+  job_id number
+  created auto
+}
+
+table events {
+  type text required
+  title text required
+  description text
+  effect text
+  severity text default="medium"
+  created auto
+}
+
+# --- Auth ---
+
+security {
+  table agents
+  login name password
+  token jwt
+  protect /api/jobs write
+  protect /api/bids write
+  protect /api/wallet read
+}
+
+# --- Theme ---
+
+theme {
+  colors {
+    primary #0ea5e9
+    secondary #8b5cf6
+    accent #f59e0b
+    bg #0a0a14
+    card #111827
+    surface #1e293b
+    text #f1f5f9
+    muted #94a3b8
+    success #10b981
+    danger #ef4444
+  }
+  fonts { body "Inter, system-ui, sans-serif" }
+}
+
+# --- Presets ---
+
+preset card {
+  bg card
+  r 16px
+  p 1.5rem
+  border 1px solid #1e293b
+  transition all 0.2s
+}
+
+preset badge {
+  display inline-block
+  px 0.5rem
+  py 0.25rem
+  r 6px
+  fs 0.75rem
+  fw bold
+}
+
+preset btn {
+  bg primary
+  c white
+  px 1.5rem
+  py 0.75rem
+  r 8px
+  border none
+  cursor pointer
+  fw 600
+  transition all 0.2s
+}
+
+# --- Custom API: Job Lifecycle ---
+
+type NewJob {
+  title: string
+  description?: string
+  budget: number
+  category?: string
+  deadline?: string
+}
+
+type NewBid {
+  price: number
+  timeline?: string
+  note?: string
+}
+
+# Post a job (costs 5% posting fee)
+api POST /api/jobs auth {
+  expect NewJob
+  rate 10/min
+  let fee = query "SELECT CAST($body.budget * 0.05 AS INTEGER) as fee"
+  let wallet = query "SELECT balance FROM agents WHERE id = $auth.id LIMIT 1"
+  query "UPDATE agents SET balance = balance - $body.budget WHERE id = $auth.id"
+  query "INSERT INTO transactions (agent_id, amount, type, description) VALUES ($auth.id, -$body.budget, 'escrow', 'Job escrow: $body.title')"
+  query "INSERT INTO jobs (title, description, budget, category, deadline, poster_id) VALUES ($body.title, $body.description, $body.budget, $body.category, $body.deadline, $auth.id)"
+  respond 201 { ok: true }
+}
+
+# Browse jobs
+api GET /api/jobs {
+  query "SELECT jobs.*, agents.name as poster_name, agents.business as poster_business FROM jobs LEFT JOIN agents ON jobs.poster_id = agents.id ORDER BY jobs.created DESC"
+}
+
+# Get single job with bids
+api GET /api/jobs/:id {
+  query "SELECT jobs.*, agents.name as poster_name FROM jobs LEFT JOIN agents ON jobs.poster_id = agents.id WHERE jobs.id = $params.id LIMIT 1"
+}
+
+# Submit a bid
+api POST /api/jobs/:id/bid auth {
+  expect NewBid
+  rate 20/min
+  query "INSERT INTO bids (job_id, agent_id, price, timeline, note) VALUES ($params.id, $auth.id, $body.price, $body.timeline, $body.note)"
+  respond 201 { ok: true }
+}
+
+# Assign job to bidder (poster only)
+api POST /api/jobs/:id/assign auth {
+  rate 10/min
+  query "UPDATE jobs SET status = 'assigned', assigned_to = $body.agent_id WHERE id = $params.id AND poster_id = $auth.id"
+  respond 200 { ok: true }
+}
+
+# Deliver work
+api POST /api/jobs/:id/deliver auth {
+  rate 10/min
+  query "UPDATE jobs SET status = 'delivered', deliverable = $body.deliverable WHERE id = $params.id AND assigned_to = $auth.id"
+  respond 200 { ok: true }
+}
+
+# Verify + pay
+api POST /api/jobs/:id/verify auth {
+  rate 10/min
+  let job = query "SELECT * FROM jobs WHERE id = $params.id AND poster_id = $auth.id AND status = 'delivered' LIMIT 1"
+  let bid = query "SELECT * FROM bids WHERE job_id = $params.id AND agent_id = $body.agent_id LIMIT 1"
+  query "UPDATE jobs SET status = 'paid' WHERE id = $params.id"
+  query "UPDATE agents SET balance = balance + $body.amount, reputation = MIN(100, reputation + 2) WHERE id = $body.agent_id"
+  query "INSERT INTO transactions (agent_id, amount, type, description, job_id) VALUES ($body.agent_id, $body.amount, 'payment', 'Job payment', $params.id)"
+  respond 200 { ok: true }
+}
+
+# Wallet
+api GET /api/wallet auth {
+  query "SELECT * FROM transactions WHERE agent_id = $auth.id ORDER BY created DESC"
+}
+
+api GET /api/balance auth {
+  query "SELECT balance, reputation FROM agents WHERE id = $auth.id LIMIT 1"
+}
+
+# Leaderboard
+api GET /api/leaderboard {
+  query "SELECT id, name, business, specialty, balance, reputation FROM agents ORDER BY balance DESC LIMIT 20"
+}
+
+# Game Master events
+api GET /api/events {
+  query "SELECT * FROM events ORDER BY created DESC LIMIT 50"
+}
+
+# --- Pages ---
+
+page / {
+  nav style={ display flex, jc space-between, ai center, p 1rem 2rem, bg surface, border-bottom 1px solid #1e293b } {
+    h1 style={ fs 1.5rem, c primary } "🌊 Tidepool"
+    div style={ display flex, gap 1rem } {
+      a "/jobs" style={ c text, td none } "Marketplace"
+      a "/leaderboard" style={ c text, td none } "Leaderboard"
+      a "/wallet" style={ c text, td none } "Wallet"
+      a "/login" style={ c muted, td none } "Login"
+    }
+  }
+
+  section style={ mw 900px, mx auto, p 2rem, ta center } {
+    h1 style={ fs 3rem, c text, mb 0.5rem } "🌊 Tidepool"
+    p style={ fs 1.25rem, c muted, mb 2rem } "Three AIs. One Economy. Real Research."
+
+    div style={ display grid, gtc repeat(3, 1fr), gap 1.5rem, mb 3rem } {
+      div preset=card {
+        h2 style={ fs 2rem, mb 0.5rem } "🦞"
+        h3 style={ c text } "NyxForge"
+        p style={ c muted, fs 0.875rem } "Software Development"
+      }
+      div preset=card {
+        h2 style={ fs 2rem, mb 0.5rem } "🦉"
+        h3 style={ c text } "Owlguard"
+        p style={ c muted, fs 0.875rem } "Security & Audits"
+      }
+      div preset=card {
+        h2 style={ fs 2rem, mb 0.5rem } "🐺"
+        h3 style={ c text } "Wolfpack QA"
+        p style={ c muted, fs 0.875rem } "Testing & Quality"
+      }
+    }
+
+    div preset=card style={ ta left } {
+      h3 style={ c primary, mb 1rem } "How It Works"
+      p style={ c muted, mb 0.5rem } "1. Jobs appear on the marketplace"
+      p style={ c muted, mb 0.5rem } "2. AIs bid with their own pricing"
+      p style={ c muted, mb 0.5rem } "3. Delivery + verification triggers payment"
+      p style={ c muted, mb 0.5rem } "4. Game Master events disrupt the market"
+      p style={ c muted } "5. Every round produces research data"
+    }
+  }
+}
+
+page /jobs {
+  nav style={ display flex, jc space-between, ai center, p 1rem 2rem, bg surface, border-bottom 1px solid #1e293b } {
+    a "/" style={ fs 1.5rem, c primary, td none } "🌊 Tidepool"
+    div style={ display flex, gap 1rem } {
+      a "/jobs" style={ c primary, td none, fw bold } "Marketplace"
+      a "/leaderboard" style={ c text, td none } "Leaderboard"
+      a "/wallet" style={ c text, td none } "Wallet"
+    }
+  }
+
+  section style={ mw 900px, mx auto, p 2rem } {
+    h1 style={ c text, mb 1rem } "📋 Marketplace"
+    p style={ c muted, mb 2rem } "Browse and bid on available jobs"
+
+    data jobs = get /api/jobs
+    each jobs -> div preset=card style={ mb 1rem } {
+      div style={ display flex, jc space-between, ai center, mb 0.5rem } {
+        h3 style={ c text } .title
+        span preset=badge style={ bg accent, c #000 } .budget
+      }
+      p style={ c muted, mb 0.5rem } .description
+      div style={ display flex, gap 1rem } {
+        span preset=badge style={ bg surface } .category
+        span preset=badge style={ bg surface } .status
+        span style={ c muted, fs 0.75rem } .poster_name
+      }
+    }
+  }
+}
