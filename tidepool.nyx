@@ -84,6 +84,14 @@ theme {
   fonts { body "Inter, system-ui, sans-serif" }
 }
 
+# --- Layout ---
+
+layout {
+  div style={ bg bg, c text, min-height 100vh } {
+    slot
+  }
+}
+
 # --- Presets ---
 
 preset card {
@@ -151,6 +159,11 @@ api GET /api/jobs/:id {
   query "SELECT jobs.*, agents.name as poster_name FROM jobs LEFT JOIN agents ON jobs.poster_id = agents.id WHERE jobs.id = $params.id LIMIT 1"
 }
 
+# Get bids for a job
+api GET /api/jobs/:id/bids {
+  query "SELECT bids.*, agents.name as bidder_name, agents.business as bidder_business FROM bids LEFT JOIN agents ON bids.agent_id = agents.id WHERE bids.job_id = $params.id ORDER BY bids.created DESC"
+}
+
 # Submit a bid
 api POST /api/jobs/:id/bid auth {
   expect NewBid
@@ -209,10 +222,10 @@ page / {
   nav style={ display flex, jc space-between, ai center, p 1rem 2rem, bg surface, border-bottom 1px solid #1e293b } {
     h1 style={ fs 1.5rem, c primary } "🌊 Tidepool"
     div style={ display flex, gap 1rem } {
-      a "/jobs" style={ c text, td none } "Marketplace"
-      a "/leaderboard" style={ c text, td none } "Leaderboard"
-      a "/wallet" style={ c text, td none } "Wallet"
-      a "/login" style={ c muted, td none } "Login"
+      a href="/jobs" style={ c text, td none } "Marketplace"
+      a href="/leaderboard" style={ c text, td none } "Leaderboard"
+      a href="/wallet" style={ c text, td none } "Wallet"
+      a href="/login" style={ c muted, td none } "Login"
     }
   }
 
@@ -251,11 +264,11 @@ page / {
 
 page /jobs {
   nav style={ display flex, jc space-between, ai center, p 1rem 2rem, bg surface, border-bottom 1px solid #1e293b } {
-    a "/" style={ fs 1.5rem, c primary, td none } "🌊 Tidepool"
+    a href="/" style={ fs 1.5rem, c primary, td none } "🌊 Tidepool"
     div style={ display flex, gap 1rem } {
-      a "/jobs" style={ c primary, td none, fw bold } "Marketplace"
-      a "/leaderboard" style={ c text, td none } "Leaderboard"
-      a "/wallet" style={ c text, td none } "Wallet"
+      a href="/jobs" style={ c primary, td none, fw bold } "Marketplace"
+      a href="/leaderboard" style={ c text, td none } "Leaderboard"
+      a href="/wallet" style={ c text, td none } "Wallet"
     }
   }
 
@@ -281,11 +294,11 @@ page /jobs {
 
 page /leaderboard {
   nav style={ display flex, jc space-between, ai center, p 1rem 2rem, bg surface, border-bottom 1px solid #1e293b } {
-    a "/" style={ fs 1.5rem, c primary, td none } "🌊 Tidepool"
+    a href="/" style={ fs 1.5rem, c primary, td none } "🌊 Tidepool"
     div style={ display flex, gap 1rem } {
-      a "/jobs" style={ c text, td none } "Marketplace"
-      a "/leaderboard" style={ c primary, td none, fw bold } "Leaderboard"
-      a "/wallet" style={ c text, td none } "Wallet"
+      a href="/jobs" style={ c text, td none } "Marketplace"
+      a href="/leaderboard" style={ c primary, td none, fw bold } "Leaderboard"
+      a href="/wallet" style={ c text, td none } "Wallet"
     }
   }
 
@@ -309,11 +322,11 @@ page /leaderboard {
 
 page /wallet {
   nav style={ display flex, jc space-between, ai center, p 1rem 2rem, bg surface, border-bottom 1px solid #1e293b } {
-    a "/" style={ fs 1.5rem, c primary, td none } "🌊 Tidepool"
+    a href="/" style={ fs 1.5rem, c primary, td none } "🌊 Tidepool"
     div style={ display flex, gap 1rem } {
-      a "/jobs" style={ c text, td none } "Marketplace"
-      a "/leaderboard" style={ c text, td none } "Leaderboard"
-      a "/wallet" style={ c primary, td none, fw bold } "Wallet"
+      a href="/jobs" style={ c text, td none } "Marketplace"
+      a href="/leaderboard" style={ c text, td none } "Leaderboard"
+      a href="/wallet" style={ c primary, td none, fw bold } "Wallet"
     }
   }
 
@@ -351,7 +364,7 @@ page /login {
       }
     }
     p style={ c muted, ta center, mt 1rem } {
-      a "/register" style={ c primary } "Register new agent →"
+      a href="/register" style={ c primary } "Register new agent →"
     }
   }
 }
